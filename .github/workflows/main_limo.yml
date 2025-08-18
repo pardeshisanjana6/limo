@@ -13,7 +13,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     permissions:
-      contents: read #This is required for actions/checkout
+      contents: read # This is required for actions/checkout
 
     steps:
       - uses: actions/checkout@v4
@@ -22,16 +22,11 @@ jobs:
         uses: shivammathur/setup-php@v2
         with:
           php-version: '8.3'
+          extensions: mbstring, pdo, gd, exif, curl, xml, zip
+          coverage: none # Can be changed to 'xdebug' or 'pcov' if needed
 
-      - name: Check if composer.json exists
-        id: check_files
-        uses: andstor/file-existence-action@v1
-        with:
-          files: 'composer.json'
-
-      - name: Run composer install if composer.json exists
-        if: steps.check_files.outputs.files_exists == 'true'
-        run: composer validate --no-check-publish && composer install --prefer-dist --no-progress
+      - name: Run composer install
+        run: composer install --prefer-dist --no-dev --no-interaction
 
 
       - name: Upload artifact for deployment job
@@ -44,8 +39,8 @@ jobs:
     runs-on: ubuntu-latest
     needs: build
     permissions:
-      id-token: write #This is required for requesting the JWT
-      contents: read #This is required for actions/checkout
+      id-token: write # This is required for requesting the JWT
+      contents: read # This is required for actions/checkout
 
     steps:
       - name: Download artifact from build job
@@ -53,13 +48,6 @@ jobs:
         with:
           name: php-app
       
-      - name: Login to Azure
-        uses: azure/login@v2
-        with:
-          client-id: ${{ secrets.AZUREAPPSERVICE_CLIENTID_A0880C0E60CF4403B657B1A216D8A26D }}
-          tenant-id: ${{ secrets.AZUREAPPSERVICE_TENANTID_D8D3569ADFCC4AD195F509071D0D2A11 }}
-          subscription-id: ${{ secrets.AZUREAPPSERVICE_SUBSCRIPTIONID_84F0AD55DCD8420D94E4395402E1B6D0 }}
-
       - name: 'Deploy to Azure Web App'
         uses: azure/webapps-deploy@v3
         id: deploy-to-webapp
@@ -67,4 +55,17 @@ jobs:
           app-name: 'Limo'
           slot-name: 'Production'
           package: .
-          
+
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh/
+          echo "${{ secrets.AZURE_WEBAPP_SSH_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          echo "Host Limo" > ~/.ssh/config
+          echo "  HostName ${{ secrets.AZURE_WEBAPP_SSH_HOST }}" >> ~/.ssh/config
+          echo "  User ${{ secrets.AZURE_WEBAPP_SSH_USER }}" >> ~/.ssh/config
+          echo "  IdentityFile ~/.ssh/id_rsa" >> ~/.ssh/config
+          echo "  StrictHostKeyChecking no" >> ~/.ssh/config
+
+      - name: Run migrations and optimize
+        run: ssh Limo "cd /home/site/wwwroot && php artisan migrate --force && php artisan config:cache && php artisan route:cache && php artisan view:cache"
