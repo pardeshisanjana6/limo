@@ -46,7 +46,7 @@ jobs:
 
     steps:
       - name: Download artifact from build job
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v3
         with:
           name: php-app
       
@@ -57,3 +57,4 @@ jobs:
           app-name: 'Limo'
           slot-name: 'Production'
           package: .
+
